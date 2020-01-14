@@ -3,5 +3,5 @@
 silver medal
 
 
-Process the time series data based on the moving block bootstrap like work and xgboost regression model
+Process the time series data with the moving block bootstrap like work and xgboost regression model
 
