@@ -1,0 +1,331 @@
+---
+author: "S.W. Yu"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+library(tidyverse)
+library(xgboost)
+library(lubridate)
+library(DescTools)
+options(scipen = 999)
+```
+
+
+# read data
+```{r}
+GA_train_o <- list()
+for(i in 0:12){ # 13 pack of data cuz the date in the training data is start from 2016-08-01 to 2018-04-30
+  time0 = ymd(20160801) + i*30.4167
+  time1 = time0 + (30.4*5.5)
+  time2 = time1 + (30.4*1.5)
+  time3 = time2 + (30.4*2)
+  
+  temp <- read_csv(paste0(".../GA_train_time_split(", time0, "_", time1, ").csv"), col_types = cols(fullVisitorId = col_character()))
+  temp %<>% mutate_if(., is.logical, as.numeric)
+  GA_train_o[[i+1]] <- temp
+}
+```
+
+```{r}
+GA_val_o <- list()
+for(i in 0:12){ # 13 pack of data cuz the date in the training data is start from 2016-08-01 to 2018-04-30
+  time0 = ymd(20160801) + i*30.4167
+  time1 = time0 + (30.4*5.5)
+  time2 = time1 + (30.4*1.5)
+  time3 = time2 + (30.4*2)
+  
+  temp <- read_csv(paste0(".../GA_val_time_split(", time2, "_", time3, ").csv"), col_types = cols(fullVisitorId = col_character()))
+  temp %<>% mutate_if(., is.logical, as.numeric)
+  GA_val_o[[i+1]] <- temp
+}
+```
+
+```{r}
+remove(temp)
+```
+
+```{r}
+train_returned_id <- list()
+train_returned_id_numbering <- list()
+train_nonretuened_id_numbering <- list()
+for(i in 1:13){
+  train_returned_id[[i]] <- GA_train_o[[i]]$fullVisitorId[
+    which( (GA_train_o[[i]]$fullVisitorId %in% GA_val_o[[i]]$fullVisitorId) )
+  ]
+  train_returned_id_numbering[[i]] <- which( (GA_train_o[[i]]$fullVisitorId %in% GA_val_o[[i]]$fullVisitorId) )
+  train_nonretuened_id_numbering[[i]] <- c(1:dim(GA_train_o[[i]])[1])[-train_returned_id_numbering[[i]]]
+}
+```
+
+```{r}
+val_returned_id <- list()
+val_returned_id_numbering <- list()
+for(i in 1:13){
+  val_returned_id[[i]] <- GA_val_o[[i]]$fullVisitorId[
+    which( (GA_val_o[[i]]$fullVisitorId %in% train_returned_id[[i]]) )
+  ]
+  val_returned_id_numbering[[i]] <- which( (GA_val_o[[i]]$fullVisitorId %in% train_returned_id[[i]]) )
+}
+```
+
+```{r}
+roulette = sample(c(1:13), 1)
+(GA_train_o[[roulette]][train_returned_id_numbering[[roulette]], ])$fullVisitorId %>% length()
+
+(GA_val_o[[roulette]][val_returned_id_numbering[[roulette]], ])$fullVisitorId %>% length()
+
+((GA_train_o[[roulette]][train_returned_id_numbering[[roulette]], ])$fullVisitorId %in% (GA_val_o[[roulette]][val_returned_id_numbering[[roulette]], ])$fullVisitorId) %>% sum()
+
+((GA_val_o[[roulette]][val_returned_id_numbering[[roulette]], ])$fullVisitorId %in% (GA_train_o[[roulette]][train_returned_id_numbering[[roulette]], ])$fullVisitorId) %>% sum()
+```
+
+
+# get suitable data
+```{r}
+GA_val_in <- list()
+for(i in 1:13){
+  GA_val_in[[i]] <- GA_val_o[[i]][train_returned_id_numbering[[i]], ]
+}
+```
+
+```{r}
+for(i in 1:13){
+  GA_val_in[[i]] %<>% as.data.frame()
+}
+```
+
+```{r}
+set.seed(123)
+GA_train <- list()
+for(n in 1:13){
+  GA_train[[n]] <- GA_train_o[[n]] %>% group_by(fullVisitorId) %>%
+    summarise(
+      login_time = NROW(fullVisitorId),
+      adwordsClickInfo.isVideoAd = mean(ifelse(is.na(adwordsClickInfo.isVideoAd), 0, adwordsClickInfo.isVideoAd)),
+      bounces = mean(ifelse(is.na(bounces), 0, bounces)),
+      browser = ifelse(is.na(Mode(browser, na.rm = T)), sample(browser, 1), Mode(browser, na.rm = T))[1],
+      channelGrouping = ifelse(is.na(Mode(channelGrouping, na.rm = T)), sample(channelGrouping, 1), Mode(channelGrouping, na.rm = T))[1],
+      city = ifelse(is.na(Mode(city, na.rm = T)), sample(city, 1), Mode(city, na.rm = T))[1],
+      continent = ifelse(is.na(Mode(continent, na.rm = T)), sample(continent, 1), Mode(continent, na.rm = T))[1],
+      country = ifelse(is.na(Mode(country, na.rm = T)), sample(country, 1), Mode(country, na.rm = T))[1],
+      deviceCategory = ifelse(is.na(Mode(deviceCategory, na.rm = T)), sample(deviceCategory, 1), Mode(deviceCategory, na.rm = T))[1],
+      hits_mean = mean(ifelse(is.na(hits), 0, hits)),
+      hits_median = median(ifelse(is.na(hits), 0, hits)),
+      hits_Mode = ifelse(is.na(Mode(hits, na.rm = T)), round(mean(hits)), Mode(hits, na.rm = T))[1],
+      hits_max = max(ifelse(is.na(hits), 0, hits)),
+      hits_min = min(ifelse(is.na(hits), 0, hits)),
+      hits_sum = sum(ifelse(is.na(hits), 0, hits)),
+      isMobile = mean(ifelse(is.na(isMobile), 0, isMobile)),
+      isTrueDirect = mean(ifelse(is.na(isTrueDirect), 0, isTrueDirect)),
+      medium = ifelse(is.na(Mode(medium, na.rm = T)), round(mean(medium)), Mode(medium, na.rm = T))[1],
+      metro = ifelse(is.na(Mode(metro, na.rm = T)), sample(metro, 1), Mode(metro, na.rm = T))[1],
+      networkDomain = ifelse(is.na(Mode(networkDomain, na.rm = T)), sample(networkDomain, 1), Mode(networkDomain, na.rm = T))[1],
+      operatingSystem = ifelse(is.na(Mode(operatingSystem, na.rm = T)), sample(operatingSystem, 1), Mode(operatingSystem, na.rm = T))[1],
+      pageviews_mean = mean(ifelse(is.na(pageviews), 0, pageviews)),
+      pageviews_median = median(ifelse(is.na(pageviews), 0, pageviews)),
+      pageviews_Mode = ifelse(is.na(Mode(pageviews, na.rm = T)), round(mean(pageviews)), Mode(pageviews, na.rm = T))[1],
+      pageviews_max = max(ifelse(is.na(pageviews), 0, pageviews)),
+      pageviews_min = min(ifelse(is.na(pageviews), 0, pageviews)),
+      pageviews_sum = sum(ifelse(is.na(pageviews), 0, pageviews)),
+      region = ifelse(is.na(Mode(region, na.rm = T)), sample(region, 1), Mode(region, na.rm = T))[1],
+      source = ifelse(is.na(Mode(source, na.rm = T)), round(mean(source)), Mode(source, na.rm = T))[1],
+      subContinent = ifelse(is.na(Mode(subContinent, na.rm = T)), sample(subContinent, 1), Mode(subContinent, na.rm = T))[1],
+      timeOnSite_mean = mean(ifelse(is.na(timeOnSite), 0, timeOnSite)),
+      timeOnSite_median = median(ifelse(is.na(timeOnSite), 0, timeOnSite)),
+      timeOnSite_Mode = ifelse(is.na(Mode(timeOnSite, na.rm = T)), round(mean(timeOnSite)), Mode(timeOnSite, na.rm = T))[1],
+      timeOnSite_max = max(ifelse(is.na(timeOnSite), 0, timeOnSite)),
+      timeOnSite_min = min(ifelse(is.na(timeOnSite), 0, timeOnSite)),
+      timeOnSite_sum = sum(ifelse(is.na(timeOnSite), 0, timeOnSite)),
+      visitNumber = mean(ifelse(is.na(visitNumber), 0, visitNumber)),
+      transactions = mean(transactions),
+      HDIindex = mean(ifelse(is.na(HDIindex), 0, HDIindex)),
+      GDPindex = mean(ifelse(is.na(GDPindex), 0, GDPindex)),
+      transactionLabel = mean(transactionLabel),
+      week = ifelse(is.na(Mode(week)), round(mean(week)), Mode(hour))[1],
+      hour = ifelse(is.na(Mode(hour)), round(mean(hour)), Mode(hour))[1],
+      transactionRevenue_train = sum(transactionRevenue)
+  )
+}
+```
+
+```{r}
+GA_val <- list()
+for(n in 1:13){
+  GA_val[[n]] <- GA_val_in[[n]] %>% group_by(fullVisitorId) %>% 
+    summarise(
+      transactionRevenue = sum(transactionRevenue)
+  )
+}
+```
+
+```{r}
+GA_train_predictable <- list()
+for(i in 1:13){
+  GA_train_predictable[[i]] <- left_join(GA_train[[i]], GA_val[[i]], by = "fullVisitorId")
+}
+```
+
+```{r}
+for(i in 1:13){
+  GA_train_predictable[[i]]$transactionRevenue <- ifelse(is.na(GA_train_predictable[[i]]$transactionRevenue), 0, GA_train_predictable[[i]]$transactionRevenue)
+}
+```
+
+```{r}
+for(i in 1:13){
+  GA_train_predictable[[i]]$transactionRevenue <- log1p(GA_train_predictable[[i]]$transactionRevenue)
+}
+```
+
+```{r}
+for(i in 1:13){
+  print(GA_train_predictable[[i]]$transactionRevenue %>% summary())
+}
+```
+
+
+
+
+# model building
+```{r}
+for(i in 1:13){
+  GA_train_predictable[[i]] %<>% select(., -fullVisitorId)
+}
+```
+
+```{r}
+for(i in 1:13){
+  GA_train_predictable[[i]] %<>% as.data.frame()
+}
+```
+
+```{r xgboost 0}
+google_xgboost_DEFAULT <- list()
+for(i in 1:13){
+  GA_train_matrix <- xgb.DMatrix(data = data.matrix(GA_train_predictable[[i]][, 1:44]), label = GA_train_predictable[[i]][, 45], missing = NA)
+  
+  if(i < 13){
+    GA_val_matrix <- xgb.DMatrix(data = data.matrix(GA_train_predictable[[i+1]][, 1:44]), label = GA_train_predictable[[i+1]][, 45], missing = NA)
+  }else{
+    GA_val_matrix <- xgb.DMatrix(data = data.matrix(GA_train_predictable[[1]][, 1:44]), label = GA_train_predictable[[1]][, 45], missing = NA)
+  }
+
+
+
+param <- list(eta = 0.3,
+              max_depth = 6,
+              min_child_weight = 1,
+              subsample = 1,
+              colsample_bytree = 1,
+              colsample_bylevel = 1,
+              colsample_bynode = 1,
+              verbose = 2,
+              base_score = 0.5,
+              gamma = 0,
+              alpha = 0, 
+              lambda = 1, 
+              eval_metric = "rmse", 
+              objective = "reg:squarederror",
+              booster = "gbtree",
+              nthread = 3)
+
+set.seed(123)
+google_xgboost_DEFAULT[[i]] <- xgb.train(params = param, data = GA_train_matrix, print_every_n = 100, nrounds = 10000, watchlist = list(train = GA_train_matrix, validation = GA_val_matrix), early_stopping_rounds = 100)
+}
+```
+
+
+# prediction
+```{r}
+GA_test_o <- read_csv("E:/new/比賽/Google Analytics Customer Revenue Prediction/time split data/GA_test_time_split(2018-12-01_2019-01-31).csv", col_types = cols(fullVisitorId = col_character()))
+str(GA_test_o)
+GA_test_o %<>% select(., -X1)
+```
+
+```{r}
+str(GA_test_o)
+```
+
+```{r}
+GA_test <- GA_test_o %>% group_by(fullVisitorId) %>%
+  summarise(
+    login_time = NROW(fullVisitorId),
+    adwordsClickInfo.isVideoAd = mean(ifelse(is.na(adwordsClickInfo.isVideoAd), 0, adwordsClickInfo.isVideoAd)),
+    bounces = mean(ifelse(is.na(bounces), 0, bounces)),
+    browser = ifelse(is.na(Mode(browser, na.rm = T)), sample(browser, 1), Mode(browser, na.rm = T))[1],
+    channelGrouping = ifelse(is.na(Mode(channelGrouping, na.rm = T)), sample(channelGrouping, 1), Mode(channelGrouping, na.rm = T))[1],
+    city = ifelse(is.na(Mode(city, na.rm = T)), sample(city, 1), Mode(city, na.rm = T))[1],
+    continent = ifelse(is.na(Mode(continent, na.rm = T)), sample(continent, 1), Mode(continent, na.rm = T))[1],
+    country = ifelse(is.na(Mode(country, na.rm = T)), sample(country, 1), Mode(country, na.rm = T))[1],
+    deviceCategory = ifelse(is.na(Mode(deviceCategory, na.rm = T)), sample(deviceCategory, 1), Mode(deviceCategory, na.rm = T))[1],
+    hits_mean = mean(ifelse(is.na(hits), 0, hits)),
+    hits_median = median(ifelse(is.na(hits), 0, hits)),
+    hits_Mode = ifelse(is.na(Mode(hits, na.rm = T)), round(mean(hits)), Mode(hits, na.rm = T))[1],
+    hits_max = max(ifelse(is.na(hits), 0, hits)),
+    hits_min = min(ifelse(is.na(hits), 0, hits)),
+    hits_sum = sum(ifelse(is.na(hits), 0, hits)),
+    isMobile = mean(ifelse(is.na(isMobile), 0, isMobile)),
+    isTrueDirect = mean(ifelse(is.na(isTrueDirect), 0, isTrueDirect)),
+    medium = ifelse(is.na(Mode(medium, na.rm = T)), round(mean(medium)), Mode(medium, na.rm = T))[1],
+    metro = ifelse(is.na(Mode(metro, na.rm = T)), sample(metro, 1), Mode(metro, na.rm = T))[1],
+    networkDomain = ifelse(is.na(Mode(networkDomain, na.rm = T)), sample(networkDomain, 1), Mode(networkDomain, na.rm = T))[1],
+    operatingSystem = ifelse(is.na(Mode(operatingSystem, na.rm = T)), sample(operatingSystem, 1), Mode(operatingSystem, na.rm = T))[1],
+    pageviews_mean = mean(ifelse(is.na(pageviews), 0, pageviews)), 
+    pageviews_median = median(ifelse(is.na(pageviews), 0, pageviews)),
+    pageviews_Mode = ifelse(is.na(Mode(pageviews, na.rm = T)), round(mean(pageviews)), Mode(pageviews, na.rm = T))[1],
+    pageviews_max = max(ifelse(is.na(pageviews), 0, pageviews)),
+    pageviews_min = min(ifelse(is.na(pageviews), 0, pageviews)),
+    pageviews_sum = sum(ifelse(is.na(pageviews), 0, pageviews)),
+    region = ifelse(is.na(Mode(region, na.rm = T)), sample(region, 1), Mode(region, na.rm = T))[1],
+    source = ifelse(is.na(Mode(source, na.rm = T)), round(mean(source)), Mode(source, na.rm = T))[1],
+    subContinent = ifelse(is.na(Mode(subContinent, na.rm = T)), sample(subContinent, 1), Mode(subContinent, na.rm = T))[1],
+    timeOnSite_mean = mean(ifelse(is.na(timeOnSite), 0, timeOnSite)),
+    timeOnSite_median = median(ifelse(is.na(timeOnSite), 0, timeOnSite)),
+    timeOnSite_Mode = ifelse(is.na(Mode(timeOnSite, na.rm = T)), round(mean(timeOnSite)), Mode(timeOnSite, na.rm = T))[1],
+    timeOnSite_max = max(ifelse(is.na(timeOnSite), 0, timeOnSite)),
+    timeOnSite_min = min(ifelse(is.na(timeOnSite), 0, timeOnSite)),
+    timeOnSite_sum = sum(ifelse(is.na(timeOnSite), 0, timeOnSite)),
+    visitNumber = mean(ifelse(is.na(visitNumber), 0, visitNumber)),
+    transactions = mean(transactions),
+    HDIindex = mean(ifelse(is.na(HDIindex), 0, HDIindex)),
+    GDPindex = mean(ifelse(is.na(GDPindex), 0, GDPindex)),
+    transactionLabel = mean(transactionLabel),
+    week = ifelse(is.na(Mode(week)), round(mean(week)), Mode(hour))[1],
+    hour = ifelse(is.na(Mode(hour)), round(mean(hour)), Mode(hour))[1],
+    transactionRevenue_train = sum(transactionRevenue)
+  )
+```
+
+```{r}
+fullVisitorId_test <- GA_test$fullVisitorId
+GA_test <- select(GA_test, -fullVisitorId)
+```
+
+```{r}
+GA_test %<>% as.matrix()
+GA_test_matrix <- xgb.DMatrix(data = GA_test)
+```
+
+```{r}
+google_xgboost <- google_xgboost_DEFAULT
+testing_result <- list()
+for(i in 1:13){
+  testing_result[[i]] <- predict(object = google_xgboost[[i]], newdata = GA_test_matrix)
+}
+
+for(i in 1:13){
+  testing_result[[i]] <- ifelse(testing_result[[i]]<0, 0, testing_result[[i]])
+}
+```
+
+```{r}
+testing_result_avg <- (testing_result[[1]]+testing_result[[2]]+testing_result[[3]]+testing_result[[4]]+testing_result[[5]]+testing_result[[6]]+testing_result[[7]]+testing_result[[8]]+testing_result[[9]]+testing_result[[10]]+testing_result[[11]]+testing_result[[12]]+testing_result[[13]])/13
+```
+
+```{r}
+testing_result_avg_id <- data.frame("fullVisitorId" = fullVisitorId_test, "PredictedLogRevenue" = testing_result_avg)
+setwd("E:/new/")
+write.csv(testing_result_avg_id, "xgBoost_DEFAULT.csv", row.names = FALSE, quote = FALSE)
+```

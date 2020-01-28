@@ -1,0 +1,210 @@
+---
+author: "S.W. Yu"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(magrittr)
+library(tidyverse) 
+library(xgboost)
+library(lubridate)
+options(scipen = 999)
+```
+
+
+
+# read data
+```{r training data}
+GA_train <- read_csv(".../GA_train_processed.csv", col_types = cols(fullVisitorId = col_character()))
+GA_train %<>% select(., -X1)
+GA_train %<>% as.data.frame()
+str(GA_train)
+```
+
+```{r testing data}
+GA_test <- read_csv(".../GA_test_processed.csv", col_types = cols(fullVisitorId = col_character()))
+GA_test %<>% select(., -X1)
+GA_test %<>% as.data.frame()
+str(GA_test)
+```
+
+```{r}
+GA_train <- mutate_if(GA_train, is.character, as.factor)
+GA_train$fullVisitorId %<>% as.character()
+```
+
+```{r}
+GA_train %>% str()
+```
+
+```{r}
+GA_test <- mutate_if(GA_test, is.character, as.factor)
+GA_test$fullVisitorId %<>% as.character()
+```
+
+```{r}
+GA_test %>% str()
+```
+
+```{r}
+which(sapply(GA_train, is.factor)==TRUE) %>% unname()
+```
+
+```{r import training levels to testing data}
+for(i in (which(sapply(GA_train, is.factor)==TRUE) %>% unname())){
+  GA_test[, i] <- factor(GA_test[, i], levels = levels(GA_train[, i]))
+}
+```
+
+```{r}
+str(GA_train)
+```
+
+```{r}
+str(GA_test)
+```
+
+```{r}
+write.csv(GA_test, "GA_test_with_training_levels.csv")
+```
+
+```{r}
+GA_train <- mutate_if(GA_train, is.factor, as.integer)
+GA_test <- mutate_if(GA_test, is.factor, as.integer)
+```
+
+
+
+GA_train[, 2] %>% table()
+  FALSE    TRUE 
+  75274 1633063 
+  
+GA_train[, 14] %>% table() 
+  FALSE    TRUE 
+1171670  536667
+
+GA_train[, 15] %>% table()
+  FALSE    TRUE 
+1173819  534518 
+
+
+GA_test[, 2] %>% table()
+ FALSE   TRUE 
+ 10605 390984 
+  
+GA_test[, 14] %>% table() 
+ FALSE   TRUE 
+277621 123968
+
+GA_test[, 15] %>% table()
+ FALSE   TRUE 
+253180 148409 
+
+
+```{r}
+GA_train <- mutate_if(GA_train, is.logical, as.integer)
+GA_test <- mutate_if(GA_test, is.logical, as.integer)
+```
+
+```{r}
+write.csv(GA_train, "GA_train_with_numeric_value(final_remain_NA).csv")
+write.csv(GA_test, "GA_test_with_numeric_value(final_remain_NA).csv")
+```
+
+```{r}
+#rm(list = ls(all = TRUE))
+```
+
+
+
+# split data as predictable form
+
+```{r training data}
+GA_train <- read_csv(".../GA_train_with_numeric_value(final_remain_NA).csv", col_types = cols(fullVisitorId = col_character()))
+GA_train %<>% select(., -X1)
+GA_train %<>% as.data.frame()
+str(GA_train)
+```
+
+```{r testing data}
+GA_test <- read_csv(".../GA_test_with_numeric_value(final_remain_NA).csv", col_types = cols(fullVisitorId = col_character()))
+GA_test %<>% select(., -X1)
+GA_test %<>% as.data.frame()
+str(GA_test)
+```
+
+```{r process date}
+GA_train$date <- ymd(GA_train$date)
+GA_test$date <- ymd(GA_test$date)
+```
+
+GA_train$fullVisitorId[which(GA_train$date >= ymd(20160801)+time0 & GA_train$date < ymd(20160801)+time1)] %>% length()
+
+```{r}
+visitStartTime_train <- as.POSIXct(GA_train$visitStartTime, tz = "UTC", origin = '1970-01-01')
+visitStartTime_test <- as.POSIXct(GA_test$visitStartTime, tz = "UTC", origin = '1970-01-01')
+
+week_train <- wday(format(visitStartTime_train, "%Y-%m-%d"), 
+                   label = FALSE, 
+                   abbr = TRUE, 
+                   week_start = getOption("lubridate.week.start", 1), 
+                   locale = Sys.getlocale("LC_TIME"))
+
+week_test <- wday(format(visitStartTime_test, "%Y-%m-%d"), 
+                   label = FALSE, 
+                   abbr = TRUE, 
+                   week_start = getOption("lubridate.week.start", 1), 
+                   locale = Sys.getlocale("LC_TIME"))
+
+hour_train <- substr(visitStartTime_train, 11, 13) %>% as.numeric()
+
+hour_test <- substr(visitStartTime_test, 11, 13) %>% as.numeric()
+```
+
+```{r}
+GA_train %<>% mutate(., "week" = week_train, "hour" = hour_train)
+GA_test %<>% mutate(., "week" = week_test, "hour" = hour_test)
+
+#GA_train %<>% select(., -visitStartTime)
+#GA_test %<>% select(., -visitStartTime)
+
+GA_train <- GA_train[, c(1:34, 36, 37, 35)]
+GA_test <- GA_test[, c(1:34, 36, 37, 35)]
+```
+
+```{r}
+GA_train_time_split <- list()
+GA_val_time_split <- list()
+
+for(i in 0:12){ # 13 pack of data cuz the date in the training data is start from 2016-08-01 to 2018-04-30
+  time0 = i*30.4167
+  time1 = time0 + (30.4*5.5)
+  time2 = time1 + (30.4*1.5)
+  time3 = time2 + (30.4*2)
+  
+  GA_train_time_split[[i+1]] <- GA_train[which(GA_train$date >= ymd(20160801)+time0 & GA_train$date < ymd(20160801)+time1), ]
+  GA_val_time_split[[i+1]] <- GA_train[which(GA_train$date >= ymd(20160801)+time2 & GA_train$date < ymd(20160801)+time3), ]
+  
+  write.csv(GA_train_time_split[[i+1]], paste0("GA_train_time_split(",  ymd(20160801)+time0,"_", ymd(20160801)+time1, ").csv"), row.names = FALSE)
+  write.csv(GA_val_time_split[[i+1]], paste0("GA_val_time_split(", ymd(20160801)+time2, "_", ymd(20160801)+time3, ").csv"), row.names = FALSE)
+}
+```
+
+```{r}
+write.csv(GA_test, "GA_test_time_split(2018-12-01_2019-01-31).csv")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

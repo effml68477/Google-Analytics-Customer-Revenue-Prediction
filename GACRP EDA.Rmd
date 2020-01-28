@@ -1,0 +1,383 @@
+---
+title: "GACRP (EDA)"
+author: "S.W. Yu"
+date: "2018/11/26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(xgboost)
+library(magrittr)
+library(tidyverse)
+library(lubridate)
+library(data.table)
+library(DescTools)
+library(gridExtra)
+options(scipen = 999)
+```
+
+```{r}
+GA_train <- read_csv(".../GA_train_processed.csv")
+GA_test <- read_csv(".../GA_test_processed.csv")
+GA_train %<>% as.data.frame()
+GA_test %<>% as.data.frame()
+GA_train %<>% select(., -X1)
+GA_test %<>% select(., -X1)
+```
+
+```{r}
+head_GA_train <- GA_train %>% head()
+write.csv(head_GA_train, "head_GA_train.csv")
+```
+
+```{r}
+head_GA_train
+```
+
+
+# NA inspection
+```{r}
+nas <- c()
+variable_info <- sapply(
+  X = 2:34, 
+  FUN = function(X) {
+  nas <- c(nas, is.na(GA_train[, X]) %>% sum())
+  nas %<>% as.numeric()
+    }
+  ) %>% as.data.frame()
+variable_info <- cbind(variable_info, colnames(GA_train)[-c(1, 34)])
+str(variable_info)
+colnames(variable_info) <- c("num of NA", "var name")
+
+
+ggplot() + 
+  geom_bar(data = variable_info, aes(x = variable_info$`var name`, y = variable_info$`num of NA`), stat = "identity", fill = "#ff8f59") + 
+  theme(panel.background = element_rect(fill = "#ecf5ff"), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.3)) + 
+  labs(title = "barplot for na inspection", x = "variables", y = "number of na") + 
+  geom_hline(yintercept = 1708337*0.8, color = "red") + 
+  geom_hline(yintercept = 1708337*0.5, color = "darkgreen") + 
+  lims(y = c(0, 1708337)) + 
+  geom_text(aes(x = 29.5, y = 1470000, label = "80%"), color = "red", size = 4.78) + 
+  geom_text(aes(x = 29.5, y = 930000, label = "50%"), color = "darkgreen", size = 4.78)
+```
+
+
+# transactionRevenue
+```{r transactionRevenue}
+train_transactionRevenue <- GA_train %>% group_by(fullVisitorId) %>% summarise(revenue = sum(transactionRevenue))
+
+train_transactionRevenue <- train_transactionRevenue[which(train_transactionRevenue$revenue!=0), ]
+
+ggplot() + 
+  geom_density(data = train_transactionRevenue, aes(x = revenue, y = ..density..), fill = "pink", alpha = 0.8, color = "red") + 
+  lims(x = c(-1, 1000000000)) + 
+  theme_minimal()
+```
+
+```{r date}
+Sys.setlocale("LC_TIME","C")
+
+
+train_date_transactionRevenue <- select(GA_train, c(date, transactionRevenue))
+train_date_transactionRevenue %<>% mutate(month = substr(ymd(train_date_transactionRevenue$date), 1, 7)) 
+
+train_day_transactionRevenue <- train_date_transactionRevenue %>% group_by(ymd(date)) %>%  summarise(day_revenue = sum(transactionRevenue))
+train_day_transactionRevenue %<>% as.data.frame()
+
+train_month_transactionRevenue <- train_date_transactionRevenue %>% group_by(month) %>%  summarise(month_revenue = sum(transactionRevenue))
+train_month_transactionRevenue %<>% as.data.frame()
+
+
+
+
+test_date_transactionRevenue <- select(GA_test, c(date, transactionRevenue))
+test_date_transactionRevenue %<>% mutate(month = substr(ymd(test_date_transactionRevenue$date), 1, 7)) 
+
+test_day_transactionRevenue <- test_date_transactionRevenue %>% group_by(ymd(date)) %>%  summarise(day_revenue = sum(transactionRevenue))
+test_day_transactionRevenue %<>% as.data.frame()
+
+test_month_transactionRevenue <- test_date_transactionRevenue %>% group_by(month) %>%  summarise(month_revenue = sum(transactionRevenue))
+test_month_transactionRevenue %<>% as.data.frame()
+```
+
+```{r }
+ggplot() + 
+  geom_line(data = train_day_transactionRevenue, aes(x = `ymd(date)`, y = day_revenue/100000), color = "#6F00D2") + 
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, size = 10, hjust = 1)) + 
+  labs(title = "daily revenue in training data", x = "date", y = "revenue/100000") + 
+  scale_x_date(date_labels = "%Y %m", limits = c(ymd(20160801)+1, ymd(20180430)))
+  
+
+ggplot() + 
+  geom_bar(data = train_month_transactionRevenue, aes(x = month, y = month_revenue/100000), stat = "identity", fill = "#6F00D2", width = 0.7) + 
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 10, hjust = 1)) + 
+  labs(title = "monthly revenue in training data", y = "revenue")
+
+
+ggplot() + 
+  geom_line(data = test_day_transactionRevenue, aes(x = `ymd(date)`, y = day_revenue/100000), color = "#007500") + 
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, size = 10, hjust = 1)) + 
+  labs(title = "daily revenue in testing data", x = "date", y = "revenue/100000") + 
+  scale_x_date(date_labels = "%Y %m", limits = c(ymd(20180501)+1, ymd(20181031)))
+  
+
+ggplot() + 
+  geom_bar(data = test_month_transactionRevenue, aes(x = month, y = month_revenue/100000), stat = "identity", fill = "#007500", width = 0.3) + 
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 10, hjust = 1)) + 
+  labs(title = "monthly revenue in testing data", y = "revenue")
+```
+
+```{r pre hour week}
+GA_train_hour <- read_csv(".../GA_train_with_numeric_value(final_remain_NA).csv", col_types = cols(fullVisitorId = col_character()))
+GA_train_hour %<>% select(., -X1)
+GA_train_hour %<>% as.data.frame()
+```
+
+```{r}
+visitStartTime_train <- as.POSIXct(GA_train_hour$visitStartTime, tz = "UTC", origin = '1970-01-01')
+
+week_train <- wday(x = format(visitStartTime_train, "%Y-%m-%d"))
+week_train <- ifelse(week_train==1, 7, week_train-1)
+
+hour_train <- substr(visitStartTime_train, 11, 13) %>% as.numeric()
+GA_train_hour %<>% mutate(week = week_train, hour = hour_train)
+```
+
+```{r}
+week_hour_transactionRevenue <- select(GA_train_hour, c("fullVisitorId", "week", "hour", "transactionRevenue"))
+str(week_hour_transactionRevenue)
+
+
+week_hour_transactionRevenue <- week_hour_transactionRevenue %>% 
+  group_by(fullVisitorId) %>% 
+  summarise(
+    mode_week = ifelse(is.na(Mode(week)), round(mean(week)), Mode(week))[1], 
+    mode_hour = ifelse(is.na(Mode(hour)), round(mean(hour)), Mode(hour))[1], 
+    weekhour_revenue = sum(transactionRevenue)
+  )
+
+week_hour_transactionRevenue %>% head()
+```
+
+```{r}
+week_hour_transactionRevenue_no0 <- week_hour_transactionRevenue[which(week_hour_transactionRevenue$weekhour_revenue!=0), ]
+```
+
+```{r - week}
+week_transactionRevenue_no0 <- week_hour_transactionRevenue_no0 %>% group_by(mode_week) %>% summarise(
+  week_times = NROW(mode_week),
+  week_revenue = sum(weekhour_revenue),
+  week_revenue_mean = mean(weekhour_revenue)
+)
+```
+
+```{r}
+ggplot() + 
+  geom_bar(data = week_hour_transactionRevenue_no0, aes(x = mode_week %>% as.factor(), y = ..count.., fill = mode_week %>% as.factor()), width = 0.3) + 
+  theme_minimal() + 
+  labs(x = "week", y = "count", title = "bar plot for non-zero transaction times from Monday to Sunday") + 
+  scale_fill_manual(values = c("pink", "#BE77FF", "#7AFEC6", "#FFBB77", "#80FFFF", "#D6D6AD", "#FFE153"), name = "week", breaks = c(1:7), labels = c("Mon", "Tue", "Wen", "Thr", "Fri", "Sat", "Sun")) + 
+  scale_x_discrete(labels = c("Mon", "Tue", "Wen", "Thr", "Fri", "Sat", "Sun"))
+
+
+ggplot() + 
+  geom_bar(data = week_transactionRevenue_no0, aes(x = mode_week %>% as.factor(), y = week_revenue_mean, fill = mode_week %>% as.factor()), stat = "identity", width = 0.3) + 
+  theme_minimal() + 
+  labs(x = "week", y = "revenue", title = "bar plot for the mean of non-zero transaction revenue from Monday to Sunday") + 
+  scale_fill_manual(values = c("pink", "#BE77FF", "#7AFEC6", "#FFBB77", "#80FFFF", "#D6D6AD", "#FFE153"), name = "week", breaks = c(1:7), labels = c("Mon", "Tue", "Wen", "Thr", "Fri", "Sat", "Sun")) + 
+  scale_x_discrete(labels = c("Mon", "Tue", "Wen", "Thr", "Fri", "Sat", "Sun"))
+
+
+week_anova <- lm(weekhour_revenue %>% log1p~factor(mode_week), data = week_hour_transactionRevenue_no0) %>% anova()
+week_anova
+```
+
+```{r - hour}
+hour_transactionRevenue_no0 <- week_hour_transactionRevenue_no0 %>% group_by(mode_hour) %>% summarise(
+  hour_times = NROW(mode_hour),
+  hour_revenue = sum(weekhour_revenue),
+  hour_revenue_mean = mean(weekhour_revenue)
+)
+```
+
+```{r}
+ggplot() + 
+  geom_line(data = hour_transactionRevenue_no0, aes(x = mode_hour, y = hour_revenue_mean), color = "#D9006C", size = 1.2) + 
+  geom_point(data = hour_transactionRevenue_no0, aes(x = mode_hour, y = hour_revenue_mean), color = "#AE0000", size = 2.2) + 
+  theme_minimal() + 
+  theme(panel.background = element_rect(fill = "#FFFAF4",color = "white")) + 
+  labs(x = "hour", y = "revenue", title = "bar plot for the mean of non-zero transaction revenue \n from to 0 a.m. to 23 p.m.") + 
+  scale_x_continuous(breaks = c(0:23), labels = c(0:23))
+
+
+
+
+hour_anova <- lm(weekhour_revenue %>% log1p~factor(mode_hour), data = week_hour_transactionRevenue_no0) %>% anova()
+hour_anova
+```
+
+```{r login times}
+logintimes_transactionRevenue <- select(GA_train, c("fullVisitorId", "transactionRevenue"))
+logintimes_transactionRevenue <- logintimes_transactionRevenue %>% group_by(fullVisitorId) %>% summarise(
+  login_times = NROW(fullVisitorId),
+  login_times_revenue = sum(transactionRevenue)
+)
+logintimes_transactionRevenue_no0 <- logintimes_transactionRevenue[which(logintimes_transactionRevenue$login_times_revenue!=0), ]
+```
+
+```{r}
+logintimes_transactionRevenue_no0 %>% group_by(login_times) %>% summarise(revenue = sum(login_times_revenue)) %>% ggplot() + 
+  geom_point(aes(x = login_times, y = revenue), color = "#6F00D2", size = 1.3) + 
+  theme_minimal() + 
+  theme(panel.background = element_rect(fill = "#FFFAF4",color = "white")) + 
+  labs(y = "revenue", title = "point plot for non-zero transaction revenue with login times")
+```
+
+```{r city unknown each }
+city_transactionRevenue <- select(GA_train, c(city, transactionRevenue))
+
+city_transactionRevenue <- city_transactionRevenue %>% group_by(city) %>%  summarise(city_revenue = sum(transactionRevenue))
+
+city_transactionRevenue$city <- ifelse(is.na(city_transactionRevenue$city), "Unknown", city_transactionRevenue$city)
+
+city_transactionRevenue <- arrange(city_transactionRevenue, city_revenue %>% desc())
+
+
+ggplot() + 
+  geom_bar(data = city_transactionRevenue[1:30, ], aes(x = reorder(city, city_revenue), y = city_revenue), stat = "identity", color = "#FF79BC", fill = "pink") + 
+  theme_minimal() + 
+  labs(title = "bar plot for transaction revenue with city", x = "city", y = "revenue") + 
+  theme(axis.text.y = element_text(color = c(rep("black", 29), "red"))) + 
+  coord_flip()
+```
+
+```{r city unknown others}
+city_transactionRevenue_unknown <- city_transactionRevenue
+city_transactionRevenue_unknown$city <- ifelse(city_transactionRevenue_unknown$city=="Unknown", "Unknown", "Others city")
+city_transactionRevenue_unknown <- city_transactionRevenue_unknown %>% group_by(city) %>% summarise(city_revenue = sum(city_revenue))
+
+ggplot() + 
+  geom_bar(data = city_transactionRevenue_unknown, aes(x = city, y = city_revenue), stat = "identity", color = "#FF79BC", fill = "pink", width = 0.2) + 
+  geom_text(aes(x = 1, y = 1367221730000-100000000000, label = "59.0250%")) + 
+  geom_text(aes(x = 2, y = 949123250000-100000000000, label = "40.9750%")) + 
+  theme_minimal() + 
+  labs(title = "bar plot for transaction revenue with binary city labels", x = "city", y = "revenue") + 
+  theme(axis.text.y = element_text(color = c("black", "red"), size = 13)) + 
+  coord_flip()
+```
+
+```{r networkdomain}
+networkDomain_transactionRevenue <- select(GA_train, c(networkDomain, transactionRevenue))
+
+networkDomain_transactionRevenue <- networkDomain_transactionRevenue %>% group_by(networkDomain) %>% summarise(networkDomain_revneue = sum(transactionRevenue)) %>% arrange(., networkDomain_revneue %>% desc())
+
+
+
+ggplot() + 
+  geom_bar(data = networkDomain_transactionRevenue[1:20, ], aes(x = reorder(networkDomain, networkDomain_revneue), y = networkDomain_revneue), stat = "identity", fill = "#EAC100", color = "#AE8F00") + 
+  theme_minimal() + 
+  labs(title = "bar plot for transaction revenue with networkDomain", x = "networkDomain", y = "revenue") + 
+  theme(axis.text.y = element_text(colour = c(rep("black", 19), "red"))) + 
+  coord_flip()
+```
+
+```{r networkdomain unknown others}
+networkDomain_transactionRevenue_unknown <- networkDomain_transactionRevenue
+networkDomain_transactionRevenue_unknown$networkDomain <- ifelse(is.na(networkDomain_transactionRevenue_unknown$networkDomain), "Unknown", "Others networkDomain")
+networkDomain_transactionRevenue_unknown <- networkDomain_transactionRevenue_unknown %>% group_by(networkDomain) %>% summarise(networkDomain_revenue = sum(networkDomain_revneue))
+
+
+ggplot() + 
+  geom_bar(data = networkDomain_transactionRevenue_unknown, aes(x = networkDomain, y = networkDomain_revenue), stat = "identity", fill = "#EAC100", color = "#AE8F00", width = 0.2) + 
+  geom_text(aes(x = 2, y = 1364096560000-100000000000, label = "58.8900%")) + 
+  geom_text(aes(x = 1, y = 952248420000-100000000000, label = "41.1100%")) + 
+  theme_minimal() + 
+  labs(title = "bar plot for transaction revenue with binary networkDomain labels", x = "networkDomain", y = "revenue") + 
+  theme(axis.text.y = element_text(color = c("black", "red"), size = 13)) + 
+  coord_flip()
+
+```
+
+```{r timeOnSite}
+timeOnSite_transactionRevenue_o <- select(GA_train, c(fullVisitorId, timeOnSite, transactionRevenue))
+
+timeOnSite_transactionRevenue_o %<>% mutate(labels = ifelse(is.na(timeOnSite_transactionRevenue_o$timeOnSite), "NA", "OVER 0"))
+timeOnSite_transactionRevenue <- timeOnSite_transactionRevenue_o %>% group_by(labels) %>% summarise(revenue = sum(transactionRevenue))
+timeOnSite_transactionRevenue
+
+
+timeOnSite_transactionRevenue_no0 <- timeOnSite_transactionRevenue_o[which(timeOnSite_transactionRevenue_o$transactionRevenue!=0), ]
+
+timeOnSite_transactionRevenue_no0 %>% group_by(timeOnSite) %>% summarise(revenue = sum(transactionRevenue)) %>% ggplot() + 
+  geom_point(aes(x = timeOnSite, y = revenue), color = "#000079", size = 1) + 
+  theme_minimal() + 
+  theme(panel.background = element_rect(fill = "#FFFAF4",color = "white")) + 
+  labs(y = "revenue", title = "point plot for non-zero transaction revenue with timeOnSite") + 
+  lims(y = c(0, 10000000000))
+```
+
+```{r channelGrouping}
+channelGrouping_transactionRevenue <- select(GA_train, c(fullVisitorId, channelGrouping, transactionRevenue))
+
+channelGrouping_transactionRevenue_no0 <- channelGrouping_transactionRevenue[which(channelGrouping_transactionRevenue$transactionRevenue!=0), ]
+
+channelGrouping_transactionRevenue_no0 <- channelGrouping_transactionRevenue_no0 %>% group_by(channelGrouping) %>% summarise(channelGrouping_revenue = sum(transactionRevenue))
+
+ggplot() + 
+  geom_bar(data = channelGrouping_transactionRevenue_no0, aes(x = channelGrouping, y = channelGrouping_revenue/table(channelGrouping_transactionRevenue$channelGrouping), fill = channelGrouping), stat = "identity", width = 0.3) + 
+  theme_minimal() + 
+  labs(y = "total revenue on each channel / the number of people who access this channel", title = "bar plot for transaction revenue with channelGrouping labels", subtitle = "the number of revenue can be produced on each channel") + 
+  theme(axis.text.y = element_text(size = 13)) + 
+  coord_flip()
+```
+
+```{r operationsystem}
+operationsystem_transactionRevenue_o <- select(GA_train, c("fullVisitorId", "operatingSystem", "transactionRevenue"))
+str(operationsystem_transactionRevenue_o)
+
+#some instreasting
+operationsystem_transactionRevenue <- operationsystem_transactionRevenue_o %>% group_by(operatingSystem) %>% summarise(revenue = sum(transactionRevenue))
+
+ggplot() + 
+  geom_bar(data = operationsystem_transactionRevenue, aes(x = operatingSystem, y = revenue, fill = operatingSystem), stat = "identity", width = 0.8) + 
+  theme_minimal() + 
+  labs(title = "bar plot for transaction revenue with operationsystem labels") + 
+  theme(axis.text.y = element_text(size = 13, colour = c( "red", "black", "red", "black", "black", "red", "red", "red", rep("black", 12), "red", "black", "black", "black"))) + 
+  coord_flip()
+```
+
+# var important
+```{r v.p. xg}
+xg_vp1 <- xgb.importance(model = google_xgboost_DEFAULT[[1]])[, 1:2]
+xg_vp2 <- xgb.importance(model = google_xgboost_DEFAULT[[2]])[, 1:2]
+xg_vp3 <- xgb.importance(model = google_xgboost_DEFAULT[[3]])[, 1:2]
+#xg_vp4 <- xgb.importance(model = google_xgboost_DEFAULT[[4]])[, 1:2]
+xg_vp5 <- xgb.importance(model = google_xgboost_DEFAULT[[5]])[, 1:2]
+xg_vp6 <- xgb.importance(model = google_xgboost_DEFAULT[[6]])[, 1:2]
+xg_vp7 <- xgb.importance(model = google_xgboost_DEFAULT[[7]])[, 1:2]
+xg_vp8 <- xgb.importance(model = google_xgboost_DEFAULT[[8]])[, 1:2]
+xg_vp9 <- xgb.importance(model = google_xgboost_DEFAULT[[9]])[, 1:2]
+xg_vp10 <- xgb.importance(model = google_xgboost_DEFAULT[[10]])[, 1:2]
+xg_vp11 <- xgb.importance(model = google_xgboost_DEFAULT[[11]])[, 1:2]
+xg_vp12 <- xgb.importance(model = google_xgboost_DEFAULT[[12]])[, 1:2]
+xg_vp13 <- xgb.importance(model = google_xgboost_DEFAULT[[13]])[, 1:2]
+
+xg_vp_1_13 <- rbind(xg_vp1, xg_vp2, xg_vp3, xg_vp5, xg_vp6, xg_vp7, xg_vp8, xg_vp9, xg_vp10, xg_vp11, xg_vp12, xg_vp13)#, xg_vp4
+
+xg_vp_all <- xg_vp_1_13 %>% group_by(Feature) %>% summarise(mean_Gain = mean(Gain))
+xg_vp_all <- arrange(xg_vp_all, mean_Gain %>% desc())
+
+ggplot() +  #x = reorder(Feature, -`mean(Gain)`) means the lining the Feature is based on the mean_Gain
+  geom_bar(data = xg_vp_all[1:20, ], aes(x = reorder(Feature, mean_Gain), y = mean_Gain, fill = mean_Gain), stat = "identity", color = "darkgreen") + #, fill = "#FF79BC"
+  theme_minimal() + 
+  theme(axis.text.y = element_text(angle = 0, vjust = 0.3, size = 12, hjust = 1)) + 
+  lims(y = c(0, 0.5)) + 
+  labs(x = "var name", y = "avg imformation gain", title = "variable importance in xgboost (default param)") + 
+  scale_fill_gradient2(low = "#A3D1D1", high = "#408080", mid = "#6FB7B7", midpoint = 0.25, limit = c(0, 0.5), space = "Lab", name = "Variable\nImportance") + 
+  coord_flip()
+```
