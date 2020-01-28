@@ -327,5 +327,5 @@ testing_result_avg <- (testing_result[[1]]+testing_result[[2]]+testing_result[[3
 ```{r}
 testing_result_avg_id <- data.frame("fullVisitorId" = fullVisitorId_test, "PredictedLogRevenue" = testing_result_avg)
 setwd("E:/new/")
-write.csv(testing_result_avg_id, "xgBoost_DEFAULT.csv", row.names = FALSE, quote = FALSE)
+write.csv(testing_result_avg_id, "XGBoost_DEFAULT_result.csv", row.names = FALSE, quote = FALSE)
 ```
