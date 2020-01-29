@@ -5,5 +5,8 @@
 
 Predict the result with xgboost model
 
-processed data:　https://drive.google.com/drive/folders/180PZydk-zEjhQjapAYAk5rqjXxXiYdPa?usp=sharing
+Silver medal
 
+Processed data:　https://drive.google.com/drive/folders/180PZydk-zEjhQjapAYAk5rqjXxXiYdPa?usp=sharing
+
+Solution had updated as the name
