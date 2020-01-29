@@ -9,4 +9,4 @@ Silver medal
 
 Processed data:　https://drive.google.com/drive/folders/180PZydk-zEjhQjapAYAk5rqjXxXiYdPa?usp=sharing
 
-Answer had uploaded as the name XGBoost _DEFAULT_ result.csv
+Answer had been uploaded as the name XGBoost _DEFAULT_ result.csv
