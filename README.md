@@ -7,7 +7,7 @@ Predict the result with xgboost model
 
 Silver medal
 
-Processed data:　https://drive.google.com/drive/folders/180PZydk-zEjhQjapAYAk5rqjXxXiYdPa?usp=sharing
+Processed data: https://drive.google.com/drive/folders/180PZydk-zEjhQjapAYAk5rqjXxXiYdPa?usp=sharing
 
 Answer had been uploaded as the name XGBoost _DEFAULT_ result.csv
 
