@@ -12,5 +12,7 @@ Processed data: https://drive.google.com/drive/folders/180PZydk-zEjhQjapAYAk5rqj
 Answer had been uploaded as the name XGBoost _DEFAULT_ result.csv
 
 Revenue World map: https://rpubs.com/effml68477/GACRPworldmap 
-,More World map: https://beta.rstudioconnect.com/content/8119/
 
+More World map: https://beta.rstudioconnect.com/content/8119/
+
+it may take some time to load the content.
