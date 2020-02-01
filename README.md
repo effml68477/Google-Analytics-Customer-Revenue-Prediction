@@ -1,6 +1,8 @@
 ### the winning solution of Google Analytics Customer Revenue Prediction
 
 
+silver medal
+
 
 
 Predict the result with xgboost model
