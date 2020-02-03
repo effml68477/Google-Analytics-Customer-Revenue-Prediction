@@ -73,34 +73,6 @@ GA_train <- mutate_if(GA_train, is.factor, as.integer)
 GA_test <- mutate_if(GA_test, is.factor, as.integer)
 ```
 
-
-
-GA_train[, 2] %>% table()
-  FALSE    TRUE 
-  75274 1633063 
-  
-GA_train[, 14] %>% table() 
-  FALSE    TRUE 
-1171670  536667
-
-GA_train[, 15] %>% table()
-  FALSE    TRUE 
-1173819  534518 
-
-
-GA_test[, 2] %>% table()
- FALSE   TRUE 
- 10605 390984 
-  
-GA_test[, 14] %>% table() 
- FALSE   TRUE 
-277621 123968
-
-GA_test[, 15] %>% table()
- FALSE   TRUE 
-253180 148409 
-
-
 ```{r}
 GA_train <- mutate_if(GA_train, is.logical, as.integer)
 GA_test <- mutate_if(GA_test, is.logical, as.integer)
@@ -137,8 +109,6 @@ str(GA_test)
 GA_train$date <- ymd(GA_train$date)
 GA_test$date <- ymd(GA_test$date)
 ```
-
-GA_train$fullVisitorId[which(GA_train$date >= ymd(20160801)+time0 & GA_train$date < ymd(20160801)+time1)] %>% length()
 
 ```{r}
 visitStartTime_train <- as.POSIXct(GA_train$visitStartTime, tz = "UTC", origin = '1970-01-01')
@@ -193,18 +163,3 @@ for(i in 0:12){ # 13 pack of data cuz the date in the training data is start fro
 ```{r}
 write.csv(GA_test, "GA_test_time_split(2018-12-01_2019-01-31).csv")
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
