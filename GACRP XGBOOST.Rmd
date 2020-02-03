@@ -239,7 +239,7 @@ google_xgboost_DEFAULT[[i]] <- xgb.train(params = param, data = GA_train_matrix,
 
 # prediction
 ```{r}
-GA_test_o <- read_csv("E:/new/比賽/Google Analytics Customer Revenue Prediction/time split data/GA_test_time_split(2018-12-01_2019-01-31).csv", col_types = cols(fullVisitorId = col_character()))
+GA_test_o <- read_csv(".../GA_test_time_split(2018-12-01_2019-01-31).csv", col_types = cols(fullVisitorId = col_character()))
 str(GA_test_o)
 GA_test_o %<>% select(., -X1)
 ```
@@ -326,6 +326,5 @@ testing_result_avg <- (testing_result[[1]]+testing_result[[2]]+testing_result[[3
 
 ```{r}
 testing_result_avg_id <- data.frame("fullVisitorId" = fullVisitorId_test, "PredictedLogRevenue" = testing_result_avg)
-setwd("E:/new/")
 write.csv(testing_result_avg_id, "XGBoost_DEFAULT_result.csv", row.names = FALSE, quote = FALSE)
 ```
