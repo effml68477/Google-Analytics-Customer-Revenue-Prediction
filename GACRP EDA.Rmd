@@ -301,8 +301,6 @@ ggplot() +
 
 ```{r}
 timeOnSite_transactionRevenue_o <- select(GA_train, c(fullVisitorId, timeOnSite, transactionRevenue))
-#time on site 有將近一半na，na的幾乎都是沒交易的
-#1.先做na與非na url 交易量圖
 
 timeOnSite_transactionRevenue_o %<>% mutate(labels = ifelse(is.na(timeOnSite_transactionRevenue_o$timeOnSite), "NA", "OVER 0"))
 timeOnSite_transactionRevenue <- timeOnSite_transactionRevenue_o %>% group_by(labels) %>% summarise(revenue = sum(transactionRevenue))
