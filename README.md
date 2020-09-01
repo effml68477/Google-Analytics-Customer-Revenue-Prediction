@@ -10,8 +10,8 @@ silver medal
  https://drive.google.com/drive/folders/180PZydk-zEjhQjapAYAk5rqjXxXiYdPa?usp=sharing
 
 
-Revenue World map: https://rpubs.com/effml68477/GACRPworldmap 
+World map 1: https://rpubs.com/effml68477/GACRPworldmap 
 
-More World map: https://beta.rstudioconnect.com/content/8119/
+World map 2: https://beta.rstudioconnect.com/content/8119/
 
 
