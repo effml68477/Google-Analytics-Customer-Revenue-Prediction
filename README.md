@@ -4,7 +4,7 @@
 silver medal
 
 
-
+https://www.kaggle.com/c/ga-customer-revenue-prediction
 
 
  https://drive.google.com/drive/folders/180PZydk-zEjhQjapAYAk5rqjXxXiYdPa?usp=sharing
